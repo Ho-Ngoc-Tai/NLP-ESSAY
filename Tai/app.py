@@ -18,14 +18,14 @@ def pipelineA(text):
     """Process text using TF-IDF + PageRank + Logistic Regression"""
     sentences = split_sentences(text)
     
-    if len(sentences) < 2:
+    if len(sentences) < 1:
         return {
-            "sentences": sentences,
+            "sentences": [],
             "sentence_rows": [],
-            "summary": sentences,
-            "summary_lr": sentences,
-            "top_k": len(sentences),
-            "error": "Text too short (need at least 2 sentences)"
+            "summary": [],
+            "summary_lr": [],
+            "top_k": 0,
+            "error": "No valid sentences found"
         }
     
     result = run_tfidf(sentences)
@@ -176,12 +176,12 @@ def pipelineB(text):
     """Process text using TextRank (overlap-based)"""
     sentences = split_sentences(text)
     
-    if len(sentences) < 2:
+    if len(sentences) < 1:
         return {
-            "sentences": sentences,
+            "sentences": [],
             "sentence_rows": [],
-            "summary": sentences,
-            "error": "Text too short (need at least 2 sentences)"
+            "summary": [],
+            "error": "No valid sentences found"
         }
     
     result = run_textrank(sentences)
@@ -214,9 +214,9 @@ def pipelineB(text):
 # ==============================
 def pipelineC(documents, doc_names=None):
     """Process multiple documents using multi-document ranking"""
-    if len(documents) < 2:
+    if len(documents) < 1:
         return {
-            "error": "Need at least 2 documents for multi-document ranking"
+            "error": "No documents provided"
         }
     
     result = run_multi_doc_ranking(documents, doc_names)
@@ -262,10 +262,7 @@ def index():
         elif pipeline == "C":
             # For demo, split text into "documents" by double newline
             documents = [doc.strip() for doc in text.split("\n\n") if doc.strip()]
-            if len(documents) < 2:
-                context["error"] = "For Pipeline C, separate documents with double newline (\\n\\n)"
-            else:
-                context["pipelineC"] = pipelineC(documents)
+            context["pipelineC"] = pipelineC(documents)
         else:  # Pipeline A
             pa = pipelineA(text)
             context["pipelineA"] = pa

@@ -1,4 +1,3 @@
-import os
 import re
 import numpy as np
 import networkx as nx
@@ -8,70 +7,24 @@ from .tfidf_pipeline import STOPWORDS_ALL
 from .nlp_utils import split_sentences
 
 # ==============================
-# CLEAN TEXT
-# ==============================
-def clean_text(text):
-    """
-    Clean text by removing HTML/XML tags and special characters.
-    
-    Args:
-        text: Input text string
-        
-    Returns:
-        Cleaned text string
-    """
-    # Remove HTML/XML tags
-    text = re.sub(r"<[^>]+>", " ", text)
-    # Remove special characters (keep alphanumeric, punctuation, spaces)
-    text = re.sub(r"[^A-Za-z0-9\.\,\!\?\s'àáảãạăắằẳẵặâấầẩẫậèéẻẽẹêếềểễệìíỉĩịòóỏõọôốồổỗộơớờởỡợùúủũụưứừửữựỳýỷỹỵđĐ]", " ", text)
-    # Remove multiple spaces
-    text = re.sub(r"\s+", " ", text).strip()
-    return text
-
-# ==============================
 # MULTI-DOCUMENT RANKING PIPELINE
 # ==============================
 def run_multi_doc_ranking(documents, doc_names=None, threshold=0.25, damping=0.85, top_n=3):
     """
     Pipeline C: Multi-Document Ranking
-    
-    Two-level approach:
-    1. Document-level: Rank documents by importance using PageRank
-    2. Sentence-level: Summarize the most important document
-    
-    Steps:
-    1. Clean all documents (remove HTML/XML tags)
-    2. Vectorize documents using TF-IDF
-    3. Compute document similarity matrix (cosine)
-    4. Build document graph (threshold-based edges)
-    5. Apply PageRank to rank documents
-    6. Select top-N most important documents
-    7. Summarize the top-1 document using sentence-level PageRank
-    
-    Args:
-        documents: List of document texts
-        doc_names: List of document names (optional)
-        threshold: Similarity threshold for graph edges (default: 0.25)
-        damping: PageRank damping factor (default: 0.85)
-        top_n: Number of top documents to return (default: 3)
-        
-    Returns:
-        Dictionary containing:
-        - cleaned_docs: Cleaned document texts
-        - doc_names: Document names
-        - doc_tfidf: Document TF-IDF matrix
-        - doc_sim_matrix: Document similarity matrix
-        - doc_graph: Document graph
-        - doc_scores: Document PageRank scores
-        - top_docs: Top-N document indices
-        - top_doc_summary: Summary of top-1 document
+    Two-level: 1) Rank documents by PageRank, 2) Summarize top document
     """
     # Default document names
     if doc_names is None:
         doc_names = [f"doc_{i+1:03d}" for i in range(len(documents))]
     
-    # Clean all documents
-    cleaned_docs = [clean_text(doc) for doc in documents]
+    # Clean all documents (remove HTML/XML tags)
+    def clean(text):
+        text = re.sub(r"<[^>]+>", " ", text)
+        text = re.sub(r"[^A-Za-z0-9\.,!?\s'àáảãạăắằẳẵặâấầẩẫậèéẻẽẹêếềểễệìíỉĩịòóỏõọôốồổỗộơớờởỡợùúủũụưứừửữựỳýỷỹỵđĐ]", " ", text)
+        return re.sub(r"\s+", " ", text).strip()
+    
+    cleaned_docs = [clean(doc) for doc in documents]
     
     # TF-IDF vectorization for documents
     vectorizer = TfidfVectorizer(
@@ -80,11 +33,10 @@ def run_multi_doc_ranking(documents, doc_names=None, threshold=0.25, damping=0.8
     )
     doc_tfidf = vectorizer.fit_transform(cleaned_docs)
     
-    # Compute document similarity matrix
+    # Compute document similarity and build graph
     doc_sim_matrix = cosine_similarity(doc_tfidf)
-    np.fill_diagonal(doc_sim_matrix, 0)  # Remove self-similarity
+    np.fill_diagonal(doc_sim_matrix, 0)
     
-    # Build document graph with threshold
     N = len(documents)
     doc_graph = nx.Graph()
     for i in range(N):
@@ -96,13 +48,10 @@ def run_multi_doc_ranking(documents, doc_names=None, threshold=0.25, damping=0.8
     if doc_graph.number_of_nodes() > 0:
         doc_scores = nx.pagerank(doc_graph, alpha=damping)
     else:
-        # If no edges, assign uniform scores
         doc_scores = {i: 1.0/N for i in range(N)}
     
-    # Sort documents by PageRank score
-    ranked_docs = sorted(doc_scores.items(), key=lambda x: x[1], reverse=True)
-    
     # Select top-N documents
+    ranked_docs = sorted(doc_scores.items(), key=lambda x: x[1], reverse=True)
     top_docs = [i for i, _ in ranked_docs[:top_n]]
     
     # Summarize the top-1 document using sentence-level PageRank
@@ -112,10 +61,7 @@ def run_multi_doc_ranking(documents, doc_names=None, threshold=0.25, damping=0.8
     if len(sentences) < 2:
         top_doc_summary = sentences
     else:
-        # Apply TF-IDF + PageRank on sentences
-        sent_vectorizer = TfidfVectorizer(
-            stop_words=STOPWORDS_ALL if STOPWORDS_ALL else None
-        )
+        sent_vectorizer = TfidfVectorizer(stop_words=STOPWORDS_ALL if STOPWORDS_ALL else None)
         sent_tfidf = sent_vectorizer.fit_transform(sentences)
         sent_sim = cosine_similarity(sent_tfidf)
         np.fill_diagonal(sent_sim, 0)
@@ -123,7 +69,6 @@ def run_multi_doc_ranking(documents, doc_names=None, threshold=0.25, damping=0.8
         sent_graph = nx.from_numpy_array(sent_sim)
         sent_scores = nx.pagerank(sent_graph, alpha=damping)
         
-        # Select top 2-3 sentences
         top_k = max(2, min(3, int(len(sentences) * 0.33)))
         ranked_sents = sorted(sent_scores.items(), key=lambda x: x[1], reverse=True)
         selected_ids = sorted([i for i, _ in ranked_sents[:top_k]])
